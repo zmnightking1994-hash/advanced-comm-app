@@ -10,16 +10,33 @@ export default function Home() {
   const [input, setInput] = useState("");
 
   // محاكاة اتصال WebSocket (سيتم ربطه بـ FastAPI لاحقاً)
-  useEffect(() => {
-    // هنا سيتم وضع كود الاتصال بـ ws://your-backend-url/ws
-  }, []);
+    useEffect(() => {
+    // استبدل الرابط برابط الـ Hugging Face Space الخاص بك
+    // لاحظ استخدام wss:// بدلاً من ws:// لأن Hugging Face يستخدم HTTPS
+    const wsUrl = "wss://https://zmdddd-advanced-comm-backend.hf.space/ws/chat";
+    
+    const ws = new WebSocket(wsUrl);
 
-  const handleSend = () => {
-    if (input.trim()) {
-      setMessages([...messages, { sender: "أنت", text: input, isAdmin: false }]);
-      setInput("");
-    }
-  };
+    ws.onopen = () => {
+      console.log("Connected to HF Space WebSocket");
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        setMessages((prev) => [...prev, { sender: data.sender, text: data.text, isAdmin: data.sender === "مشرف" }]);
+      } catch (e) {
+        // في حال الرسائل النصية البحتة من النظام
+        setMessages((prev) => [...prev, { sender: "نظام", text: event.data, isAdmin: false }]);
+      }
+    };
+
+    ws.onerror = (error) => {
+      console.error("WebSocket Error:", error);
+    };
+
+    return () => ws.close();
+  }, []);
 
   return (
     <main className="min-h-screen bg-gray-50 p-4 md:p-8 flex flex-col md:flex-row gap-6">
