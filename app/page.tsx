@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 export default function Home() {
   const [userState, setUserState] = useState<"presence" | "focus" | "treatment">("presence");
@@ -8,14 +8,16 @@ export default function Home() {
     { sender: "المشرف", text: "مرحباً بك، كيف يمكنني مساعدتك؟", isAdmin: true },
   ]);
   const [input, setInput] = useState("");
+  
+  // استخدام useRef للحفاظ على مرجع الـ WebSocket وإرسال الرسائل من خلاله
+  const socketRef = useRef<WebSocket | null>(null);
 
-  // محاكاة اتصال WebSocket (سيتم ربطه بـ FastAPI لاحقاً)
-    useEffect(() => {
-    // استبدل الرابط برابط الـ Hugging Face Space الخاص بك
-    // لاحظ استخدام wss:// بدلاً من ws:// لأن Hugging Face يستخدم HTTPS
-    const wsUrl = "wss://https://zmdddd-advanced-comm-backend.hf.space/ws/chat";
+  useEffect(() => {
+    // إصلاح الرابط: حذف https:// الزائدة
+    const wsUrl = "wss://zmdddd-advanced-comm-backend.hf.space/ws/chat";
     
     const ws = new WebSocket(wsUrl);
+    socketRef.current = ws;
 
     ws.onopen = () => {
       console.log("Connected to HF Space WebSocket");
@@ -24,9 +26,12 @@ export default function Home() {
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        setMessages((prev) => [...prev, { sender: data.sender, text: data.text, isAdmin: data.sender === "مشرف" }]);
+        setMessages((prev) => [...prev, { 
+          sender: data.sender, 
+          text: data.text, 
+          isAdmin: data.sender === "مشرف" 
+        }]);
       } catch (e) {
-        // في حال الرسائل النصية البحتة من النظام
         setMessages((prev) => [...prev, { sender: "نظام", text: event.data, isAdmin: false }]);
       }
     };
@@ -35,16 +40,34 @@ export default function Home() {
       console.error("WebSocket Error:", error);
     };
 
-    return () => ws.close();
+    return () => {
+      ws.close();
+    };
   }, []);
+
+  // --- إضافة وظيفة handleSend التي كانت ناقصة ---
+  const handleSend = () => {
+    if (input.trim() === "" || !socketRef.current) return;
+
+    // 1. إرسال الرسالة عبر الـ WebSocket للـ Backend
+    const messageData = {
+      sender: "User", // يمكنك تغييرها لاحقاً لاسم المريض
+      text: input
+    };
+    
+    socketRef.current.send(JSON.stringify(messageData));
+
+    // 2. إضافة الرسالة محلياً للقائمة لتظهر فوراً
+    setMessages((prev) => [...prev, { sender: "أنت", text: input, isAdmin: false }]);
+
+    // 3. تفريغ الحقل
+    setInput("");
+  };
 
   return (
     <main className="min-h-screen bg-gray-50 p-4 md:p-8 flex flex-col md:flex-row gap-6">
-      
       {/* القسم الأيسر: المحتوى الأساسي */}
       <div className="flex-1 flex flex-col gap-6">
-        
-        {/* 1. قسم الوسائط (مشغل الفيديو) */}
         <div className="w-full bg-black rounded-xl overflow-hidden aspect-video shadow-lg flex items-center justify-center">
           <div className="text-white text-center">
             <p className="text-xl font-bold">مشغل الفيديو الإرشادي</p>
@@ -52,7 +75,6 @@ export default function Home() {
           </div>
         </div>
 
-        {/* 2. الشبكة التفاعلية (3 مربعات عرضية) */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg shadow-sm hover:shadow-md transition cursor-pointer">
             <h3 className="font-bold text-blue-800 mb-2">التركيز</h3>
@@ -68,7 +90,6 @@ export default function Home() {
           </div>
         </div>
 
-        {/* 3. التدفق الديناميكي (حسب حالة المستخدم) */}
         <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
           <h2 className="text-lg font-bold mb-4 text-gray-800">التدفق الديناميكي</h2>
           <div className="flex gap-2 mb-4">
@@ -93,7 +114,6 @@ export default function Home() {
                 <div className="p-3 bg-red-50 border-l-4 border-red-500 text-red-800 rounded">
                   مرحلة العلاج: خطة العلاج الخاصة بك (صندوق المشرف - للقراءة فقط).
                 </div>
-                {/* صندوق المشرف (غير قابل للتعديل من المستخدم) */}
                 <div className="p-3 bg-gray-100 border border-gray-300 rounded relative">
                   <span className="absolute top-2 left-2 bg-red-600 text-white text-xs px-2 py-0.5 rounded">مشرف</span>
                   <p className="text-gray-700 mt-4">توصية المشرف: الالتزام بالبرنامج المحدد دون تأجيل.</p>
@@ -104,7 +124,7 @@ export default function Home() {
         </div>
       </div>
 
-      {/* القسم الأيمن: نظام المحادثة (تشبه الواتساب) */}
+      {/* القسم الأيمن: نظام المحادثة */}
       <div className="w-full md:w-96 bg-white rounded-xl shadow-sm border border-gray-200 flex flex-col h-[80vh]">
         <div className="bg-green-600 p-4 rounded-t-xl text-white font-bold text-center">
           المحادثة الفورية
@@ -138,7 +158,6 @@ export default function Home() {
           </button>
         </div>
       </div>
-
     </main>
   );
 }
