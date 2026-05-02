@@ -2,160 +2,134 @@
 
 import { useState, useEffect, useRef } from "react";
 
+// تعريف أنواع الغرف
+type RoomType = "focus" | "story" | "center" | "general";
+
 export default function Home() {
-  const [userState, setUserState] = useState<"presence" | "focus" | "treatment">("presence");
-  const [messages, setMessages] = useState<{ sender: string; text: string; isAdmin: boolean }[]>([
-    { sender: "المشرف", text: "مرحباً بك، كيف يمكنني مساعدتك؟", isAdmin: true },
-  ]);
+  const [activeRoom, setActiveRoom] = useState<RoomType>("general");
   const [input, setInput] = useState("");
   
-  // استخدام useRef للحفاظ على مرجع الـ WebSocket وإرسال الرسائل من خلاله
+  // تخزين الرسائل لكل غرفة بشكل منفصل
+  const [allMessages, setAllMessages] = useState<Record<RoomType, any[]>>({
+    general: [{ sender: "المشرف", text: "مرحباً بك في القسم العام", isAdmin: true }],
+    focus: [{ sender: "المشرف", text: "هنا نناقش أهدافك وتركيزك", isAdmin: true }],
+    story: [{ sender: "المشرف", text: "شاركنا قصتك وإنجازاتك هنا", isAdmin: true }],
+    center: [{ sender: "المشرف", text: "هنا تجد المصادر والمعلومات", isAdmin: true }],
+  });
+
   const socketRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
-    // إصلاح الرابط: حذف https:// الزائدة
     const wsUrl = "wss://zmdddd-advanced-comm-backend.hf.space/ws/chat";
-    
     const ws = new WebSocket(wsUrl);
     socketRef.current = ws;
-
-    ws.onopen = () => {
-      console.log("Connected to HF Space WebSocket");
-    };
 
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        setMessages((prev) => [...prev, { 
-          sender: data.sender, 
-          text: data.text, 
-          isAdmin: data.sender === "مشرف" 
-        }]);
-      } catch (e) {
-        setMessages((prev) => [...prev, { sender: "نظام", text: event.data, isAdmin: false }]);
-      }
+        // نضع الرسالة في الغرفة المحددة القادمة من الـ Backend
+        const room = (data.room as RoomType) || "general";
+        setAllMessages((prev) => ({
+          ...prev,
+          [room]: [...prev[room], { sender: data.sender, text: data.text, isAdmin: data.isAdmin }]
+        }));
+      } catch (e) { console.error("Error parsing message", e); }
     };
 
-    ws.onerror = (error) => {
-      console.error("WebSocket Error:", error);
-    };
-
-    return () => {
-      ws.close();
-    };
+    return () => ws.close();
   }, []);
 
-  // --- إضافة وظيفة handleSend التي كانت ناقصة ---
   const handleSend = () => {
     if (input.trim() === "" || !socketRef.current) return;
 
-    // 1. إرسال الرسالة عبر الـ WebSocket للـ Backend
     const messageData = {
-      sender: "User", // يمكنك تغييرها لاحقاً لاسم المريض
+      room: activeRoom, // نرسل اسم الغرفة الحالية
+      sender: "أحمد",
       text: input
     };
     
     socketRef.current.send(JSON.stringify(messageData));
-
-    // 2. إضافة الرسالة محلياً للقائمة لتظهر فوراً
-    setMessages((prev) => [...prev, { sender: "أنت", text: input, isAdmin: false }]);
-
-    // 3. تفريغ الحقل
+    
+    // إضافة الرسالة محلياً للغرفة النشطة فقط
+    setAllMessages(prev => ({
+      ...prev,
+      [activeRoom]: [...prev[activeRoom], { sender: "أنت", text: input, isAdmin: false }]
+    }));
     setInput("");
   };
 
   return (
-    <main className="min-h-screen bg-gray-50 p-4 md:p-8 flex flex-col md:flex-row gap-6">
-      {/* القسم الأيسر: المحتوى الأساسي */}
+    <main className="min-h-screen bg-gray-50 p-4 md:p-8 flex flex-col md:flex-row gap-6 text-right" dir="rtl">
+      
       <div className="flex-1 flex flex-col gap-6">
-        <div className="w-full bg-black rounded-xl overflow-hidden aspect-video shadow-lg flex items-center justify-center">
-          <div className="text-white text-center">
-            <p className="text-xl font-bold">مشغل الفيديو الإرشادي</p>
-            <p className="text-sm text-gray-400 mt-2">سيتم تشغيل المحتوى التوجيهي هنا</p>
-          </div>
-        </div>
-
+        {/* المربعات الثلاثة - الآن تعمل كمفاتيح تبديل للمحادثات */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg shadow-sm hover:shadow-md transition cursor-pointer">
-            <h3 className="font-bold text-blue-800 mb-2">التركيز</h3>
-            <p className="text-sm text-blue-600">تحديد الأهداف والتركيز على الخطوات القادمة.</p>
+          <div 
+            onClick={() => setActiveRoom("focus")}
+            className={`p-4 rounded-lg shadow-sm cursor-pointer transition border-2 ${activeRoom === 'focus' ? 'border-blue-500 bg-blue-100' : 'border-transparent bg-white'}`}
+          >
+            <h3 className="font-bold text-blue-800">محادثة التركيز</h3>
+            <p className="text-xs text-blue-600">اضغط لفتح غرفة الأهداف</p>
           </div>
-          <div className="bg-purple-50 border border-purple-200 p-4 rounded-lg shadow-sm hover:shadow-md transition cursor-pointer">
-            <h3 className="font-bold text-purple-800 mb-2">القصة</h3>
-            <p className="text-sm text-purple-600">رحلة المستخدم والإنجازات المحققة.</p>
+
+          <div 
+            onClick={() => setActiveRoom("story")}
+            className={`p-4 rounded-lg shadow-sm cursor-pointer transition border-2 ${activeRoom === 'story' ? 'border-purple-500 bg-purple-100' : 'border-transparent bg-white'}`}
+          >
+            <h3 className="font-bold text-purple-800">محادثة القصة</h3>
+            <p className="text-xs text-purple-600">اضغط لفتح غرفة الإنجازات</p>
           </div>
-          <div className="bg-green-50 border border-green-200 p-4 rounded-lg shadow-sm hover:shadow-md transition cursor-pointer">
-            <h3 className="font-bold text-green-800 mb-2">المركز</h3>
-            <p className="text-sm text-green-600">الوصول للمصادر والمعلومات الهامة.</p>
+
+          <div 
+            onClick={() => setActiveRoom("center")}
+            className={`p-4 rounded-lg shadow-sm cursor-pointer transition border-2 ${activeRoom === 'center' ? 'border-green-500 bg-green-100' : 'border-transparent bg-white'}`}
+          >
+            <h3 className="font-bold text-green-800">محادثة المركز</h3>
+            <p className="text-xs text-green-600">اضغط لفتح غرفة المصادر</p>
           </div>
         </div>
 
-        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
-          <h2 className="text-lg font-bold mb-4 text-gray-800">التدفق الديناميكي</h2>
-          <div className="flex gap-2 mb-4">
-            <button onClick={() => setUserState("presence")} className={`px-3 py-1 rounded-full text-sm ${userState === 'presence' ? 'bg-gray-800 text-white' : 'bg-gray-200'}`}>في حال وجود</button>
-            <button onClick={() => setUserState("focus")} className={`px-3 py-1 rounded-full text-sm ${userState === 'focus' ? 'bg-gray-800 text-white' : 'bg-gray-200'}`}>تركيز</button>
-            <button onClick={() => setUserState("treatment")} className={`px-3 py-1 rounded-full text-sm ${userState === 'treatment' ? 'bg-gray-800 text-white' : 'bg-gray-200'}`}>العلاج</button>
-          </div>
-          
-          <div className="space-y-3">
-            {userState === "presence" && (
-              <div className="p-3 bg-yellow-50 border-l-4 border-yellow-500 text-yellow-800 rounded">
-                مرحلة التواجد: يرجى تأكيد حضورك واستعراض المعلومات الأولية.
-              </div>
-            )}
-            {userState === "focus" && (
-              <div className="p-3 bg-blue-50 border-l-4 border-blue-500 text-blue-800 rounded">
-                مرحلة التركيز: يرجى الانتباه للخطوات التفصيلية المطلوبة منك.
-              </div>
-            )}
-            {userState === "treatment" && (
-              <>
-                <div className="p-3 bg-red-50 border-l-4 border-red-500 text-red-800 rounded">
-                  مرحلة العلاج: خطة العلاج الخاصة بك (صندوق المشرف - للقراءة فقط).
-                </div>
-                <div className="p-3 bg-gray-100 border border-gray-300 rounded relative">
-                  <span className="absolute top-2 left-2 bg-red-600 text-white text-xs px-2 py-0.5 rounded">مشرف</span>
-                  <p className="text-gray-700 mt-4">توصية المشرف: الالتزام بالبرنامج المحدد دون تأجيل.</p>
-                </div>
-              </>
-            )}
-          </div>
+        {/* مشغل الفيديو أو المحتوى */}
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex-1">
+            <h2 className="text-xl font-bold mb-4">الغرفة النشطة: {
+                activeRoom === 'focus' ? 'التركيز' : 
+                activeRoom === 'story' ? 'القصة' : 
+                activeRoom === 'center' ? 'المركز' : 'العامة'
+            }</h2>
+            <p className="text-gray-600">هنا يمكنك عرض محتوى خاص بكل غرفة (فيديو أو تعليمات) يتغير بتغير الغرفة.</p>
         </div>
       </div>
 
-      {/* القسم الأيمن: نظام المحادثة */}
-      <div className="w-full md:w-96 bg-white rounded-xl shadow-sm border border-gray-200 flex flex-col h-[80vh]">
-        <div className="bg-green-600 p-4 rounded-t-xl text-white font-bold text-center">
-          المحادثة الفورية
+      {/* نظام المحادثة - يظهر رسائل الغرفة المختارة فقط */}
+      <div className="w-full md:w-96 bg-white rounded-xl shadow-lg border border-gray-200 flex flex-col h-[80vh]">
+        <div className={`p-4 rounded-t-xl text-white font-bold text-center ${
+            activeRoom === 'focus' ? 'bg-blue-600' : 
+            activeRoom === 'story' ? 'bg-purple-600' : 'bg-green-600'
+        }`}>
+          محادثة {activeRoom}
         </div>
         
         <div className="flex-1 p-4 overflow-y-auto bg-gray-50 space-y-3">
-          {messages.map((msg, idx) => (
+          {allMessages[activeRoom].map((msg, idx) => (
             <div key={idx} className={`flex flex-col ${msg.isAdmin ? 'items-start' : 'items-end'}`}>
-              <div className={`max-w-[80%] p-3 rounded-xl shadow-sm ${msg.isAdmin ? 'bg-white border border-gray-200 text-gray-800' : 'bg-green-100 text-green-900'}`}>
-                <span className="text-xs font-bold block mb-1">{msg.sender}</span>
-                {msg.text}
+              <div className={`max-w-[85%] p-3 rounded-2xl ${msg.isAdmin ? 'bg-white border text-gray-800' : 'bg-opacity-80 bg-blue-500 text-white'}`}>
+                <span className="text-[10px] font-bold block">{msg.sender}</span>
+                <p className="text-sm">{msg.text}</p>
               </div>
             </div>
           ))}
         </div>
 
-        <div className="p-3 bg-white border-t flex gap-2">
+        <div className="p-3 border-t flex gap-2">
           <input 
             type="text" 
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-            placeholder="اكتب رسالتك..." 
-            className="flex-1 border border-gray-300 rounded-full px-4 py-2 focus:outline-none focus:border-green-500"
+            placeholder={`اكتب في غرفة ${activeRoom}...`}
+            className="flex-1 border rounded-full px-4 py-2 text-sm focus:outline-none"
           />
-          <button 
-            onClick={handleSend}
-            className="bg-green-600 text-white px-4 py-2 rounded-full hover:bg-green-700 transition"
-          >
-            إرسال
-          </button>
+          <button onClick={handleSend} className="bg-gray-800 text-white px-4 py-2 rounded-full">إرسال</button>
         </div>
       </div>
     </main>
